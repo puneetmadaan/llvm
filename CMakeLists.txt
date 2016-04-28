@@ -406,6 +406,18 @@ endif()
 # first cmake run
 include(config-ix)
 
+if(PURE_WINDOWS AND MSVC14)
+  MESSAGE( STATUS "INCLUDING DDK PATH TO OVERCOME ATLERROR...." )
+  find_package(WinDDK REQUIRED)
+  MESSAGE( STATUS "WINDDK_INCLUDE_DIR  :${WINDDK_INCLUDE_DIR}" )
+  include_directories( ${WINDDK_INCLUDE_DIR}/atl71 )
+  if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+    link_directories(${WINDDK_DIR}/lib/ATL/amd64)
+  else( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+    link_directories(${WINDDK_DIR}/lib/ATL/i386)
+  endif( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+endif (PURE_WINDOWS)
+
 # By default, we target the host, but this can be overridden at CMake
 # invocation time.
 set(LLVM_DEFAULT_TARGET_TRIPLE "${LLVM_HOST_TRIPLE}" CACHE STRING
