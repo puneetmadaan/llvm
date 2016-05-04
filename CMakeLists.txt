@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 2.8.12.2)
 
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "No build type selected, default to Debug")
-  set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (default Debug)")
+  set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
 if(POLICY CMP0022)
@@ -30,13 +30,13 @@ if(NOT DEFINED LLVM_VERSION_MAJOR)
   set(LLVM_VERSION_MAJOR 3)
 endif()
 if(NOT DEFINED LLVM_VERSION_MINOR)
-  set(LLVM_VERSION_MINOR 9)
+  set(LLVM_VERSION_MINOR 8)
 endif()
 if(NOT DEFINED LLVM_VERSION_PATCH)
-  set(LLVM_VERSION_PATCH 0)
+  set(LLVM_VERSION_PATCH 1)
 endif()
 if(NOT DEFINED LLVM_VERSION_SUFFIX)
-  set(LLVM_VERSION_SUFFIX svn)
+  set(LLVM_VERSION_SUFFIX "")
 endif()
 
 if (POLICY CMP0048)
@@ -56,21 +56,6 @@ project(LLVM
   ${cmake_3_0_LANGUAGES}
   C CXX ASM)
 
-if(APPLE)
-  if(NOT CMAKE_LIBTOOL)
-    find_program(CMAKE_LIBTOOL NAMES libtool)
-  endif()
-  if(CMAKE_LIBTOOL)
-    set(CMAKE_LIBTOOL ${CMAKE_LIBTOOL} CACHE PATH "libtool executable")
-    message(STATUS "Found libtool - ${CMAKE_LIBTOOL}")
-    get_property(languages GLOBAL PROPERTY ENABLED_LANGUAGES)
-    foreach(lang ${languages})
-      set(CMAKE_${lang}_CREATE_STATIC_LIBRARY
-        "${CMAKE_LIBTOOL} -static -o <TARGET> <LINK_FLAGS> <OBJECTS> ")
-    endforeach()
-  endif()
-endif()
-
 # The following only works with the Ninja generator in CMake >= 3.0.
 set(LLVM_PARALLEL_COMPILE_JOBS "" CACHE STRING
   "Define the maximum number of concurrent compilation jobs.")
@@ -81,11 +66,6 @@ if(LLVM_PARALLEL_COMPILE_JOBS)
     set_property(GLOBAL APPEND PROPERTY JOB_POOLS compile_job_pool=${LLVM_PARALLEL_COMPILE_JOBS})
     set(CMAKE_JOB_POOL_COMPILE compile_job_pool)
   endif()
-endif()
-
-set(LLVM_BUILD_GLOBAL_ISEL OFF CACHE BOOL "Experimental: Build GlobalISel")
-if(LLVM_BUILD_GLOBAL_ISEL)
-  add_definitions(-DLLVM_BUILD_GLOBAL_ISEL)
 endif()
 
 set(LLVM_PARALLEL_LINK_JOBS "" CACHE STRING
@@ -407,16 +387,18 @@ if(LLVM_LINK_LLVM_DYLIB OR LLVM_BUILD_LLVM_C_DYLIB)
   set(LLVM_BUILD_LLVM_DYLIB_default ON)
 endif()
 option(LLVM_BUILD_LLVM_DYLIB "Build libllvm dynamic library" ${LLVM_BUILD_LLVM_DYLIB_default})
+set(LLVM_DISABLE_LLVM_DYLIB_ATEXIT_DEFAULT ON)
+if (LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_DISABLE_LLVM_DYLIB_ATEXIT_DEFAULT OFF)
+endif()
+option(LLVM_DISABLE_LLVM_DYLIB_ATEXIT "Disable llvm-shlib's atexit destructors." ${LLVM_DISABLE_LLVM_DYLIB_ATEXIT_DEFAULT})
+if(LLVM_DISABLE_LLVM_DYLIB_ATEXIT)
+  set(DISABLE_LLVM_DYLIB_ATEXIT 1)
+endif()
 
 option(LLVM_OPTIMIZED_TABLEGEN "Force TableGen to be built with optimization" OFF)
 if(CMAKE_CROSSCOMPILING OR (LLVM_OPTIMIZED_TABLEGEN AND LLVM_ENABLE_ASSERTIONS))
   set(LLVM_USE_HOST_TOOLS ON)
-endif()
-
-if (MSVC_IDE AND NOT (MSVC_VERSION LESS 1900))
-  option(LLVM_ADD_NATIVE_VISUALIZERS_TO_SOLUTION "Configure project to use Visual Studio native visualizers" TRUE)
-else()
-  set(LLVM_ADD_NATIVE_VISUALIZERS_TO_SOLUTION FALSE CACHE INTERNAL "For Visual Studio 2013, manually copy natvis files to Documents\\Visual Studio 2013\\Visualizers" FORCE)
 endif()
 
 # All options referred to from HandleLLVMOptions have to be specified
@@ -424,9 +406,17 @@ endif()
 # first cmake run
 include(config-ix)
 
-string(REPLACE "Native" ${LLVM_NATIVE_ARCH}
-  LLVM_TARGETS_TO_BUILD "${LLVM_TARGETS_TO_BUILD}")
-list(REMOVE_DUPLICATES LLVM_TARGETS_TO_BUILD)
+if(PURE_WINDOWS AND MSVC14)
+  MESSAGE( STATUS "INCLUDING DDK PATH TO OVERCOME ATLERROR...." )
+  find_package(WinDDK REQUIRED)
+  MESSAGE( STATUS "WINDDK_INCLUDE_DIR  :${WINDDK_INCLUDE_DIR}" )
+  include_directories( ${WINDDK_INCLUDE_DIR}/atl71 )
+  if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+    link_directories(${WINDDK_DIR}/lib/ATL/amd64)
+  else( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+    link_directories(${WINDDK_DIR}/lib/ATL/i386)
+  endif( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+endif (PURE_WINDOWS AND MSVC14)
 
 # By default, we target the host, but this can be overridden at CMake
 # invocation time.
@@ -685,11 +675,6 @@ else()
   endif()
 endif()
 
-# Use LLVM_ADD_NATIVE_VISUALIZERS_TO_SOLUTION instead of LLVM_INCLUDE_UTILS because it is not really a util
-if (LLVM_ADD_NATIVE_VISUALIZERS_TO_SOLUTION)
-  add_subdirectory(utils/LLVMVisualizers)
-endif()
-
 if(LLVM_INCLUDE_TESTS)
   add_subdirectory(utils/unittest)
 endif()
@@ -745,8 +730,6 @@ if( LLVM_INCLUDE_TESTS )
     DEPENDS ${LLVM_LIT_DEPENDS}
     ARGS ${LLVM_LIT_EXTRA_ARGS}
     )
-  add_custom_target(test-depends DEPENDS ${LLVM_LIT_DEPENDS})
-  set_target_properties(test-depends PROPERTIES FOLDER "Tests")
 endif()
 
 if (LLVM_INCLUDE_DOCS)
@@ -789,28 +772,4 @@ if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
                               -DCMAKE_INSTALL_COMPONENT=llvm-headers
                               -P "${CMAKE_BINARY_DIR}/cmake_install.cmake")
   endif()
-endif()
-
-# This must be at the end of the LLVM root CMakeLists file because it must run
-# after all targets are created.
-if(LLVM_DISTRIBUTION_COMPONENTS)
-  if(CMAKE_CONFIGURATION_TYPES)
-    message(FATAL_ERROR "LLVM_DISTRIBUTION_COMPONENTS cannot be specified with multi-configuration generators (i.e. Xcode or Visual Studio)")
-  endif()
-
-  add_custom_target(distribution)
-  add_custom_target(install-distribution)
-  foreach(target ${LLVM_DISTRIBUTION_COMPONENTS})
-    if(TARGET ${target})
-      add_dependencies(distribution ${target})
-    else()
-      message(FATAL_ERROR "Specified distribution component '${target}' doesn't have a target")
-    endif()
-
-    if(TARGET install-${target})
-      add_dependencies(install-distribution install-${target})
-    else()
-      message(FATAL_ERROR "Specified distribution component '${target}' doesn't have an install target")
-    endif()
-  endforeach()
 endif()
