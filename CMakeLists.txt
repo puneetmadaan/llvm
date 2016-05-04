@@ -416,7 +416,7 @@ if(PURE_WINDOWS AND MSVC14)
   else( CMAKE_SIZEOF_VOID_P EQUAL 8 )
     link_directories(${WINDDK_DIR}/lib/ATL/i386)
   endif( CMAKE_SIZEOF_VOID_P EQUAL 8 )
-endif (PURE_WINDOWS)
+endif (PURE_WINDOWS AND MSVC14)
 
 # By default, we target the host, but this can be overridden at CMake
 # invocation time.
